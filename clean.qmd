@@ -1,0 +1,275 @@
+---
+title: "clean"
+date: "`14/09/2024`"
+author: "Group1"
+format: 
+  html: 
+    embed-resources: true 
+    code-fold: true 
+    code-tools: true 
+table-of-contents: true 
+number-sections: true 
+---
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(gendercoder)
+library(tidyverse)
+library(janitor)
+library(hms)
+train <- read.csv("train.csv")
+```
+
+This step clean all numerical about data value to make it available to analyze by removing all the currency units and convert them into the number of money under the unit of AUD(Australia Dollars), also we keep the original currency as another unique column.
+
+```{r}
+train <- train %>%
+  mutate(
+    Income_currency = case_when(
+      grepl("AU\\$|AUD", Income) ~ "AUD",
+      grepl("AED", Income) ~ "AED",
+      grepl("GBP|£", Income) ~ "GBP",
+    ),
+    Income_clean = readr::parse_number(Income),  # Remove the currency symbols and keep the numeric part
+    Income_AUD = case_when(
+      Income_currency %in% c("AED") ~ Income_clean * 0.39,   # Convert AED to AUD
+      Income_currency %in% c("GBP") ~ Income_clean * 1.89,   # Convert GBP to AUD
+      Income_currency %in% c("AUD") ~ Income_clean,          # Keep AUD as it is
+    ),
+    
+    # Clean 'Expenditure' column
+    Expenditure_currency = case_when(
+      grepl("AU\\$|AUD", Expenditure) ~ "AUD",
+      grepl("AED", Expenditure) ~ "AED",
+      grepl("GBP|£", Expenditure) ~ "GBP",
+    ),
+    Expenditure_clean = readr::parse_number(Expenditure),  # Remove currency symbols
+    Expenditure_AUD = case_when(
+      Expenditure_currency %in% c("AED") ~ Expenditure_clean * 0.39,   # Convert AED to AUD
+      Expenditure_currency %in% c("GBP") ~ Expenditure_clean * 1.89,   # Convert GBP to AUD
+      Expenditure_currency %in% c("AUD") ~ Expenditure_clean,          # Keep AUD as it is
+    ),
+    
+    # Clean 'GiftsTransaction' column
+    GiftsTransaction_currency = case_when(
+      grepl("AU\\$|AUD", GiftsTransaction) ~ "AUD",
+      grepl("AED", GiftsTransaction) ~ "AED",
+      grepl("GBP|£", GiftsTransaction) ~ "GBP",
+    ),
+    GiftsTransaction_clean = readr::parse_number(GiftsTransaction),  # Remove currency symbols
+    GiftsTransaction_AUD = case_when(
+      GiftsTransaction_currency %in% c("AED") ~ GiftsTransaction_clean * 0.39,   # Convert AED to AUD
+      GiftsTransaction_currency %in% c("GBP") ~ GiftsTransaction_clean * 1.89,   # Convert GBP to AUD
+      GiftsTransaction_currency %in% c("AUD") ~ GiftsTransaction_clean,          # Keep AUD as it is
+    ),
+    
+    # Clean 'TransactionAmount' column
+    TransactionAmount_currency = case_when(
+      grepl("AU\\$|AUD", TransactionAmount) ~ "AUD",
+      grepl("AED", TransactionAmount) ~ "AED",
+      grepl("GBP|£", TransactionAmount) ~ "GBP",
+    ),
+    TransactionAmount_clean = readr::parse_number(TransactionAmount),  # Remove currency symbols
+    TransactionAmount_AUD = case_when(
+      TransactionAmount_currency %in% c("AED") ~ TransactionAmount_clean * 0.39,   # Convert AED to AUD
+      TransactionAmount_currency %in% c("GBP") ~ TransactionAmount_clean * 1.89,   # Convert GBP to AUD
+      TransactionAmount_currency %in% c("AUD") ~ TransactionAmount_clean,          # Keep AUD as it is
+    )
+  )
+
+train
+```
+
+This step ensures that variations in gender labels are aligned into a standard category with only male and female, improving the quality and interpretability of the analysis.
+
+```{r}
+#use gendercoder to automatically sort variables
+train =  train|> mutate(
+  Gender = gendercoder::recode_gender(Gender, dictionary = fewlevels_en))
+```
+
+Transaction locations were cleaned and standardized by converting text to lowercase, removing punctuation, and common abbreviations were expanded to full city names by 'case_when'. Unmatched or missing entries were given the label "none," ensuring that the column is standardized for further analysis.
+
+```{r}
+train = train |> mutate(
+  TransactionLocation = tolower(TransactionLocation),
+  TransactionLocation = str_replace_all(TransactionLocation, '[[:punct:]]',' '),
+  TransactionLocation = stringr::word(TransactionLocation),
+  TransactionLocation = case_when(
+    stringr::str_starts(TransactionLocation,"adl") ~ "adelaide",
+    stringr::str_starts(TransactionLocation,"bne") ~ "brisbane",
+    stringr::str_starts(TransactionLocation,"cbr") ~ "canberra",
+    stringr::str_starts(TransactionLocation,"hbt") ~ "hobart",
+    stringr::str_starts(TransactionLocation,"drw") ~ "darwin",
+    stringr::str_starts(TransactionLocation,"x") ~ "twitter",
+    stringr::str_starts(TransactionLocation,"pth") ~ "perth",
+    stringr::str_starts(TransactionLocation,"syd") ~ "sydney",
+    stringr::str_starts(TransactionLocation,"mlb") ~ "melbourne",
+    stringr::str_starts(TransactionLocation,"mel") ~ "melbourne",
+    is.na(TransactionLocation) ~ "none",
+    TRUE ~ TransactionLocation),
+ TransactionLocation = tools::toTitleCase(TransactionLocation))
+```
+
+Outliers and erroneous entries in the 'age' column been corrected. Negative values were converted to positive by 'abs()', any extreme values larger than 1000 would be divided by 1000.
+
+```{r}
+# Fix odd age enteries (negative and 1000+ ages)
+train = train |> mutate(Age =abs(Age), Age = case_when( Age >= 1000 ~ Age/1000, TRUE ~ Age))
+```
+
+Device types were simplified and standardized. The column was cleaned by converting text to lowercase and extracting the first word. Specific device types (e.g., Android, iPhone, and generic mobile devices) were grouped under the common label "mobile." Unmatched entries or missing values were labeled as "none."
+
+```{r}
+#Renaming Device Types to condense
+train = train |> mutate(
+  DeviceType = tolower(DeviceType),
+  DeviceType = stringr::word(DeviceType),
+  DeviceType = case_when(
+    stringr::str_starts(DeviceType,"and") ~ "mobile",
+    stringr::str_starts(DeviceType,"gal") ~ "mobile",
+    stringr::str_starts(DeviceType,"smart") ~ "mobile",
+    stringr::str_starts(DeviceType,"iph") ~ "mobile",
+    stringr::str_starts(DeviceType,"mob") ~ "mobile",
+    is.na(DeviceType) ~ "none",
+    TRUE ~ DeviceType))
+```
+
+Cleaning and standardizing the Transactiontime column,
+
+```{r}
+train$TransactionTime <- gsub("/", ":", train$TransactionTime)
+train = train |> mutate(TransactionTime = hms::as_hms(TransactionTime))
+```
+
+This code systematically identifies, converts, and checks the 'TransactionDate' column for missing or invalid dates.
+
+```{r}
+head(train)
+missing_dates <- is.na(train$TransactionDate)
+train$TransactionDate <- as.Date(train$TransactionDate, format="%Y-%m-%d")   
+invalid_dates <- is.na(train$TransactionDate)
+invalid_entries <- train[invalid_dates, ]
+print(invalid_entries)
+```
+
+```{r}
+write.csv(train, "Train_final.csv")
+```
+
+```{r}
+test <- read.csv("test.csv")
+```
+
+applies all the cleaning code for test data
+
+```{r}
+test <- test %>%
+  mutate(
+    Income_currency = case_when(
+      grepl("AU\\$|AUD", Income) ~ "AUD",
+      grepl("AED", Income) ~ "AED",
+      grepl("GBP|£", Income) ~ "GBP",
+    ),
+    Income_clean = readr::parse_number(Income),  # Remove the currency symbols and keep the numeric part
+    Income_AUD = case_when(
+      Income_currency %in% c("AED") ~ Income_clean * 0.39,   # Convert AED to AUD
+      Income_currency %in% c("GBP") ~ Income_clean * 1.89,   # Convert GBP to AUD
+      Income_currency %in% c("AUD") ~ Income_clean,          # Keep AUD as it is
+    ),
+    
+    # Clean 'Expenditure' column
+    Expenditure_currency = case_when(
+      grepl("AU\\$|AUD", Expenditure) ~ "AUD",
+      grepl("AED", Expenditure) ~ "AED",
+      grepl("GBP|£", Expenditure) ~ "GBP",
+    ),
+    Expenditure_clean = readr::parse_number(Expenditure),  # Remove currency symbols
+    Expenditure_AUD = case_when(
+      Expenditure_currency %in% c("AED") ~ Expenditure_clean * 0.39,   # Convert AED to AUD
+      Expenditure_currency %in% c("GBP") ~ Expenditure_clean * 1.89,   # Convert GBP to AUD
+      Expenditure_currency %in% c("AUD") ~ Expenditure_clean,          # Keep AUD as it is
+    ),
+    
+    # Clean 'GiftsTransaction' column
+    GiftsTransaction_currency = case_when(
+      grepl("AU\\$|AUD", GiftsTransaction) ~ "AUD",
+      grepl("AED", GiftsTransaction) ~ "AED",
+      grepl("GBP|£", GiftsTransaction) ~ "GBP",
+    ),
+    GiftsTransaction_clean = readr::parse_number(GiftsTransaction),  # Remove currency symbols
+    GiftsTransaction_AUD = case_when(
+      GiftsTransaction_currency %in% c("AED") ~ GiftsTransaction_clean * 0.39,   # Convert AED to AUD
+      GiftsTransaction_currency %in% c("GBP") ~ GiftsTransaction_clean * 1.89,   # Convert GBP to AUD
+      GiftsTransaction_currency %in% c("AUD") ~ GiftsTransaction_clean,          # Keep AUD as it is
+    ),
+    
+    # Clean 'TransactionAmount' column
+    TransactionAmount_currency = case_when(
+      grepl("AU\\$|AUD", TransactionAmount) ~ "AUD",
+      grepl("AED", TransactionAmount) ~ "AED",
+      grepl("GBP|£", TransactionAmount) ~ "GBP",
+    ),
+    TransactionAmount_clean = readr::parse_number(TransactionAmount),  # Remove currency symbols
+    TransactionAmount_AUD = case_when(
+      TransactionAmount_currency %in% c("AED") ~ TransactionAmount_clean * 0.39,   # Convert AED to AUD
+      TransactionAmount_currency %in% c("GBP") ~ TransactionAmount_clean * 1.89,   # Convert GBP to AUD
+      TransactionAmount_currency %in% c("AUD") ~ TransactionAmount_clean,          # Keep AUD as it is
+    )
+  )
+
+test
+```
+
+```{r}
+test =  test|> mutate(
+  Gender = gendercoder::recode_gender(Gender, dictionary = fewlevels_en))
+test = test |> mutate(
+  TransactionLocation = tolower(TransactionLocation),
+  TransactionLocation = str_replace_all(TransactionLocation, '[[:punct:]]',' '),
+  TransactionLocation = stringr::word(TransactionLocation),
+  TransactionLocation = case_when(
+    stringr::str_starts(TransactionLocation,"adl") ~ "adelaide",
+    stringr::str_starts(TransactionLocation,"bne") ~ "brisbane",
+    stringr::str_starts(TransactionLocation,"cbr") ~ "canberra",
+    stringr::str_starts(TransactionLocation,"hbt") ~ "hobart",
+    stringr::str_starts(TransactionLocation,"drw") ~ "darwin",
+    stringr::str_starts(TransactionLocation,"x") ~ "twitter",
+    stringr::str_starts(TransactionLocation,"pth") ~ "perth",
+    stringr::str_starts(TransactionLocation,"syd") ~ "sydney",
+    stringr::str_starts(TransactionLocation,"mlb") ~ "melbourne",
+    stringr::str_starts(TransactionLocation,"mel") ~ "melbourne",
+    is.na(TransactionLocation) ~ "none",
+    TRUE ~ TransactionLocation
+  ),
+ TransactionLocation = tools::toTitleCase(TransactionLocation))
+test = test |> mutate(Age =abs(Age), Age = case_when( Age >= 1000 ~ Age/1000, TRUE ~ Age))
+test = test |> mutate(
+  DeviceType = tolower(DeviceType),
+  DeviceType = stringr::word(DeviceType),
+  DeviceType = case_when(
+    stringr::str_starts(DeviceType,"and") ~ "mobile",
+    stringr::str_starts(DeviceType,"gal") ~ "mobile",
+    stringr::str_starts(DeviceType,"smart") ~ "mobile",
+    stringr::str_starts(DeviceType,"iph") ~ "mobile",
+    stringr::str_starts(DeviceType,"mob") ~ "mobile",
+    is.na(DeviceType) ~ "none",
+    TRUE ~ DeviceType))
+unique(sort(test$DeviceType))
+```
+
+```{r}
+test$TransactionTime <- gsub("/", ":", test$TransactionTime)
+test = test |> mutate(TransactionTime = hms::as_hms(TransactionTime))
+head(test)
+missing_dates <- is.na(test$TransactionDate)
+test$TransactionDate <- as.Date(test$TransactionDate, format="%Y-%m-%d")   
+invalid_dates <- is.na(test$TransactionDate)
+invalid_entries <- test[invalid_dates, ]
+print(invalid_entries)
+```
+
+```{r}
+write.csv(test, "Test_final.csv")
+```

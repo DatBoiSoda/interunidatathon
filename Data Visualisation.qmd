@@ -1,0 +1,85 @@
+---
+title: "Graphs"
+format: html
+editor: visual
+---
+
+Creating a circular stacked histogram to highlight the number of fraudulent vs normal transactions per hour
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+data = read.csv("Train_final.csv")
+data = data |> 
+  mutate(TransactionTime = hms::as_hms(TransactionTime))
+data = data |> 
+  mutate(IsFraud = as.character(IsFraud))
+#This is what hapiness is made out of
+data |> ggplot() + 
+  aes(fill = IsFraud, x = TransactionTime) + 
+  geom_histogram(boundary=0, binwidth = 60*60,closed = "right") + 
+  coord_polar() + xlab("Transaction Time") + ylab("") +scale_fill_manual(name = "Fraudulent Activity", labels = c("No", "Yes"), values = c("palegreen3", "lightcoral"))
+ggsave("plot1.png")
+```
+
+Barplot showing percentage of transactions in a location that are fraudulent
+
+```{r}
+data |> ggplot(aes(x = TransactionLocation, fill = IsFraud)) + geom_bar(position = "fill") +  guides(x =  guide_axis(angle = 90)) + xlab("Transaction Location") + ylab("Percentage") + scale_fill_manual(name = "Fraudulent Activity", labels = c("No", "Yes"), values = c("palegreen3", "lightcoral"))
+ggsave("plot2.png")
+```
+
+Table and stats on fraudulent activity
+
+```{r}
+chartdata = read.csv("Train_FINAL+.csv")
+table(chartdata$IsFraud, chartdata$TimeofDay)
+#% of transactions at midnight which are fraud
+Fraud_midnight = 2542/(452+2542)
+Fraud_midnight
+#% of total fraud which occurs at midnigh
+Fraud_overnight = 2542/(536+2542+479+438)
+Fraud_overnight
+table(chartdata$IsFraud)
+Fraud_perc = 3995/(6971+3995)
+Fraud_perc
+```
+
+age (notused)
+
+```{r}
+chartdata = chartdata |> 
+  mutate(IsFraud = as.character(IsFraud))
+chartdata |> ggplot(aes(fill = IsFraud, x= Age)) + geom_histogram(binwidth = 5)
+```
+
+Transaction Type and Fraud
+
+```{r}
+#Table outlining Transaction Type and Fraud
+table1 <- table(chartdata$TransactionType, chartdata$IsFraud)
+table1
+#creating a percentage variable
+type_fraud <- chartdata %>%
+  group_by(TransactionType, IsFraud) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  mutate(percentage = count / sum(count) * 100)
+#graphing Transaction Type and Fraud
+ggplot(type_fraud, aes(x = TransactionType, y = percentage, fill = factor(IsFraud))) +
+  geom_bar(stat = "identity", position = "stack") +
+  scale_fill_manual(name = "Fraudulent Activity", labels = c("No", "Yes"), values = c("palegreen3", "lightcoral")) +
+  labs(title = "Fraud Distribution by Transaction Type",
+       x = "Transaction Type",
+       y = "Percentage") 
+ggsave("Plot3.png")
+
+```
+
+Fraud by ed level
+
+```{r}
+chartdata |> ggplot(aes(x = EducationLevel, fill = IsFraud)) +
+  geom_bar(position = "stack") +
+  labs(title = "Fraud by Education Level", x = "Education Level", y = "Count") +
+  theme_minimal()
+```
